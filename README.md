@@ -94,6 +94,19 @@ App: http://localhost:3000
 ./scripts/setup-dev.sh
 ```
 
+### 5. Supabase Configuration
+
+This project requires a Supabase project for authentication and database services.
+To set this up:
+
+1. **Create a project** on [Supabase](https://supabase.com/).
+2. **Environment Variables**: Add your Supabase URL and Anon Key to `.env.local` in `frontend/` and `.env` in `backend/`.
+   ```
+   NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
+   ```
+3. **Database Migrations**: Run the SQL script found in `supabase/migrations/` using the Supabase SQL Editor in your dashboard, or via the Supabase CLI (`supabase db push`) to create the required tables and security policies.
+
 ---
 
 ## Development
@@ -131,16 +144,15 @@ Full roadmap: [docs/roadmap.md](./docs/roadmap.md)
 
 ---
 
-## Phase 0 Scope
+## Phase 0-2 Scope
 
-Phase 0 delivers the project foundation only:
-
-- Monorepo structure and CI skeleton
-- Next.js and FastAPI application scaffolds
-- Health check endpoint
-- Documentation and environment templates
-
-**Not included in Phase 0:** authentication, business logic, AI features.
+**Phase 0 (Foundation)**: Delivered the monorepo structure, Next.js/FastAPI scaffolds, and documentation.
+**Phase 1 (Authentication)**: Delivered Supabase Auth, organizations management, and RLS policies.
+**Phase 2 (Repository)**: Delivered the production-grade Contract Repository, including:
+- Supabase SQL schema for contracts and tags with strict RLS.
+- Secure file upload and download via Supabase Storage.
+- FastAPI REST endpoints (`/api/v1/contracts`).
+- Modern UI for uploading, listing, and viewing contracts using `shadcn/ui`.
 
 ---
 

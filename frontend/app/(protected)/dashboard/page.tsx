@@ -25,7 +25,8 @@ export default async function DashboardPage() {
     redirect('/organization/create')
   }
 
-  const orgName = (memberData.organizations as { name: string }).name
+  const org = memberData.organizations as unknown as { name: string } | { name: string }[]
+  const orgName = Array.isArray(org) ? org[0]?.name : org?.name
   const role = memberData.role
 
   return (

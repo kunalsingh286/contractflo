@@ -7,7 +7,7 @@ export async function createOrganization(formData: FormData) {
   const name = formData.get('name') as string
   
   if (!name) {
-    return { error: 'Organization name is required' }
+    redirect('/organization/create?error=Name_required')
   }
   
   // Generate a basic slug
@@ -18,7 +18,7 @@ export async function createOrganization(formData: FormData) {
   // Verify user is authenticated
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
-    return { error: 'Not authenticated' }
+    redirect('/login')
   }
 
   // Call the secure RPC function to create org and assign admin
@@ -28,7 +28,7 @@ export async function createOrganization(formData: FormData) {
   })
 
   if (error) {
-    return { error: error.message }
+    redirect('/organization/create?error=Failed_to_create')
   }
 
   redirect('/dashboard')

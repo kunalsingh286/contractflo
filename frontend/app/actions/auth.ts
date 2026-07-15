@@ -8,7 +8,7 @@ export async function signIn(formData: FormData) {
   const password = formData.get('password') as string
 
   if (!email || !password) {
-    return { error: 'Email and password are required' }
+    redirect('/login?error=Missing_credentials')
   }
 
   const supabase = await createClient()
@@ -19,7 +19,7 @@ export async function signIn(formData: FormData) {
   })
 
   if (error) {
-    return { error: error.message }
+    redirect('/login?error=Invalid_credentials')
   }
 
   redirect('/dashboard')
@@ -30,7 +30,7 @@ export async function signUp(formData: FormData) {
   const password = formData.get('password') as string
 
   if (!email || !password) {
-    return { error: 'Email and password are required' }
+    redirect('/signup?error=Missing_credentials')
   }
 
   const supabase = await createClient()
@@ -41,7 +41,7 @@ export async function signUp(formData: FormData) {
   })
 
   if (error) {
-    return { error: error.message }
+    redirect('/signup?error=Signup_failed')
   }
 
   redirect('/organization/create')

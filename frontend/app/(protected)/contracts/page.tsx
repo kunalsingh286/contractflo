@@ -52,7 +52,7 @@ export default function ContractsPage() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Contracts</h1>
-          <p className="text-neutral-400 mt-1">Manage your organization's repository</p>
+          <p className="text-neutral-400 mt-1">Manage your organization&apos;s repository</p>
         </div>
         <Link href="/contracts/upload">
           <Button className="bg-blue-600 hover:bg-blue-700 text-white">

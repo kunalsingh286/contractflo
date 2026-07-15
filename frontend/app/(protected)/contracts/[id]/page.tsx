@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { fetchAPI } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { format } from 'date-fns'
@@ -17,6 +17,7 @@ export default function ContractDetailsPage() {
   const router = useRouter()
   const contractId = params.id as string
   
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [contract, setContract] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [statusUpdating, setStatusUpdating] = useState(false)
@@ -39,7 +40,7 @@ export default function ContractDetailsPage() {
     try {
       const { url } = await fetchAPI(`/contracts/download/${contractId}`)
       window.open(url, '_blank')
-    } catch (err) {
+    } catch {
       alert('Failed to get download link')
     }
   }
@@ -49,7 +50,7 @@ export default function ContractDetailsPage() {
     try {
       await fetchAPI(`/contracts/${contractId}`, { method: 'DELETE' })
       router.push('/contracts')
-    } catch (err) {
+    } catch {
       alert('Failed to delete contract')
     }
   }
@@ -64,7 +65,7 @@ export default function ContractDetailsPage() {
         body: formData,
       })
       setContract({ ...contract, status: updated.status })
-    } catch (err) {
+    } catch {
       alert('Failed to update status')
     } finally {
       setStatusUpdating(false)
@@ -185,6 +186,7 @@ export default function ContractDetailsPage() {
                 
                 <TabsContent value="history" className="p-6">
                   <div className="space-y-4">
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                     {contract.contract_versions?.map((v: any) => (
                       <div key={v.id} className="flex items-start gap-3">
                         <div className="mt-0.5 p-1.5 bg-neutral-800 rounded-full">

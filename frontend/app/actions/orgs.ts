@@ -22,7 +22,7 @@ export async function createOrganization(formData: FormData) {
   }
 
   // Call the secure RPC function to create org and assign admin
-  const { data, error } = await supabase.rpc('create_organization', {
+  const { error } = await supabase.rpc('create_organization', {
     org_name: name,
     org_slug: slug,
   })

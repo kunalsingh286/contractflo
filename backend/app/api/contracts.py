@@ -1,8 +1,9 @@
-import uuid
 import json
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from typing import List, Optional
+import uuid
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from supabase import Client
+
 from .deps import get_current_user, get_supabase_client
 from .models import ContractResponse
 
@@ -14,9 +15,9 @@ async def upload_contract(
     title: str = Form(...),
     contract_type: str = Form(...),
     status: str = Form(...),
-    counterparty: Optional[str] = Form(None),
-    description: Optional[str] = Form(None),
-    tags: Optional[str] = Form(None),  # JSON string of list
+    counterparty: str | None = Form(None),
+    description: str | None = Form(None),
+    tags: str | None = Form(None),  # JSON string of list
     user = Depends(get_current_user),
     supabase: Client = Depends(get_supabase_client)
 ):
@@ -46,8 +47,6 @@ async def upload_contract(
     # We will assume RLS policies in the DB protect access, but let's just upload using the standard client.
     # If the client isn't authenticated, the upload will fail due to RLS.
     # We will pass the jwt token to the supabase client headers.
-    
-    supabase_auth_client = get_supabase_client()
     
     # For a robust backend, we should use a service role client to upload, 
     # or ensure RLS is bypassed since the backend handles auth. We'll proceed with standard upload for now.
@@ -88,7 +87,7 @@ async def upload_contract(
             if tag_list:
                 tag_data = [{"contract_id": contract_id, "tag_name": t} for t in tag_list]
                 supabase.table("contract_tags").insert(tag_data).execute()
-        except:
+        except Exception:
             pass
             
     # Insert version
@@ -102,7 +101,7 @@ async def upload_contract(
     
     return new_contract
 
-@router.get("", response_model=List[ContractResponse])
+@router.get("", response_model=list[ContractResponse])
 def list_contracts(
     user = Depends(get_current_user),
     supabase: Client = Depends(get_supabase_client)
@@ -124,20 +123,25 @@ def get_contract(
 @router.patch("/{contract_id}", response_model=ContractResponse)
 def update_contract(
     contract_id: str,
-    title: Optional[str] = Form(None),
-    contract_type: Optional[str] = Form(None),
-    status: Optional[str] = Form(None),
-    counterparty: Optional[str] = Form(None),
-    description: Optional[str] = Form(None),
+    title: str | None = Form(None),
+    contract_type: str | None = Form(None),
+    status: str | None = Form(None),
+    counterparty: str | None = Form(None),
+    description: str | None = Form(None),
     user = Depends(get_current_user),
     supabase: Client = Depends(get_supabase_client)
 ):
     update_data = {}
-    if title: update_data["title"] = title
-    if contract_type: update_data["contract_type"] = contract_type
-    if status: update_data["status"] = status
-    if counterparty is not None: update_data["counterparty"] = counterparty
-    if description is not None: update_data["description"] = description
+    if title: 
+        update_data["title"] = title
+    if contract_type: 
+        update_data["contract_type"] = contract_type
+    if status: 
+        update_data["status"] = status
+    if counterparty is not None: 
+        update_data["counterparty"] = counterparty
+    if description is not None: 
+        update_data["description"] = description
     
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields to update")
@@ -166,7 +170,7 @@ def delete_contract(
     # Delete from storage
     try:
         supabase.storage.from_("contracts").remove([storage_path])
-    except:
+    except Exception:
         pass
     
     return {"message": "Contract deleted successfully"}
@@ -187,5 +191,5 @@ def download_contract(
     try:
         res = supabase.storage.from_("contracts").create_signed_url(storage_path, 3600)
         return {"url": res["signedURL"]}
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=500, detail="Could not generate download URL")

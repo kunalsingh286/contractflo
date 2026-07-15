@@ -1,36 +1,37 @@
-from pydantic import BaseModel
-from typing import Optional, List
 from datetime import date, datetime
 from uuid import UUID
+
+from pydantic import BaseModel
+
 
 class ContractBase(BaseModel):
     title: str
     contract_type: str
     status: str
-    effective_date: Optional[date] = None
-    expiration_date: Optional[date] = None
-    renewal_date: Optional[date] = None
-    counterparty: Optional[str] = None
-    description: Optional[str] = None
+    effective_date: date | None = None
+    expiration_date: date | None = None
+    renewal_date: date | None = None
+    counterparty: str | None = None
+    description: str | None = None
 
 class ContractCreate(ContractBase):
-    tags: Optional[List[str]] = []
+    tags: list[str] | None = []
 
 class ContractUpdate(BaseModel):
-    title: Optional[str] = None
-    contract_type: Optional[str] = None
-    status: Optional[str] = None
-    effective_date: Optional[date] = None
-    expiration_date: Optional[date] = None
-    renewal_date: Optional[date] = None
-    counterparty: Optional[str] = None
-    description: Optional[str] = None
-    tags: Optional[List[str]] = None
+    title: str | None = None
+    contract_type: str | None = None
+    status: str | None = None
+    effective_date: date | None = None
+    expiration_date: date | None = None
+    renewal_date: date | None = None
+    counterparty: str | None = None
+    description: str | None = None
+    tags: list[str] | None = None
 
 class ContractResponse(ContractBase):
     id: UUID
     organization_id: UUID
-    uploaded_by: Optional[UUID] = None
+    uploaded_by: UUID | None = None
     storage_path: str
     file_name: str
     file_size: int
@@ -48,5 +49,5 @@ class ContractVersionResponse(BaseModel):
     contract_id: UUID
     version_number: int
     storage_path: str
-    uploaded_by: Optional[UUID] = None
+    uploaded_by: UUID | None = None
     created_at: datetime

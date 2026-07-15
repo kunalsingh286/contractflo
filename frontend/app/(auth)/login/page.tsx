@@ -29,7 +29,7 @@ export default function LoginPage() {
           <CardFooter className="flex flex-col gap-4">
             <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white">Log In</Button>
             <p className="text-sm text-neutral-400 text-center">
-              Don't have an account? <Link href="/signup" className="text-blue-500 hover:underline">Sign up</Link>
+              Don&apos;t have an account? <Link href="/signup" className="text-blue-500 hover:underline">Sign up</Link>
             </p>
           </CardFooter>
         </form>

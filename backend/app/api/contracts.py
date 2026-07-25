@@ -1,13 +1,109 @@
 import json
 import uuid
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from supabase import Client
 
 from .deps import get_current_user, get_supabase_client
 from .models import ContractResponse
+from app.schemas.extraction import ContractExtractionResponse
+from app.services.ai_service import AIService
+from app.services.extraction_service import (
+    AIAnalysisPipelineError,
+    ContractNotFoundError,
+    ContractStorageDownloadError,
+    DocumentExtractionPipelineError,
+    ExtractionPersistenceError,
+    ExtractionService,
+    ExtractionServiceError,
+)
+from app.services.document_service import DocumentService
 
 router = APIRouter(prefix="/contracts", tags=["Contracts"])
+
+
+def get_document_service() -> DocumentService:
+    return DocumentService()
+
+
+def get_ai_service() -> AIService:
+    return AIService()
+
+
+def get_extraction_service(
+    supabase: Client = Depends(get_supabase_client),
+    document_service: DocumentService = Depends(get_document_service),
+    ai_service: AIService = Depends(get_ai_service),
+) -> ExtractionService:
+    return ExtractionService(
+        supabase_client=supabase,
+        document_service=document_service,
+        ai_service=ai_service,
+    )
+
+
+def _map_extraction_service_error(error: Exception) -> HTTPException:
+    if isinstance(error, ContractNotFoundError):
+        return HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contract not found",
+        )
+    if isinstance(error, DocumentExtractionPipelineError):
+        return HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Could not extract text from the contract document",
+        )
+    if isinstance(error, AIAnalysisPipelineError):
+        return HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not analyze contract intelligence",
+        )
+    if isinstance(error, ContractStorageDownloadError):
+        return HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not download the contract file",
+        )
+    if isinstance(error, ExtractionPersistenceError):
+        return HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not persist contract intelligence",
+        )
+    if isinstance(error, ExtractionServiceError):
+        return HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not process contract intelligence",
+        )
+    return HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="Unexpected error while processing contract intelligence",
+    )
+
+
+@router.post("/{contract_id}/analyze", response_model=ContractExtractionResponse)
+async def analyze_contract(
+    contract_id: UUID,
+    extraction_service: ExtractionService = Depends(get_extraction_service),
+):
+    try:
+        return await extraction_service.analyze_contract(contract_id)
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise _map_extraction_service_error(error)
+
+
+@router.get("/{contract_id}/intelligence", response_model=ContractExtractionResponse)
+async def get_contract_intelligence(
+    contract_id: UUID,
+    extraction_service: ExtractionService = Depends(get_extraction_service),
+):
+    try:
+        return await extraction_service.get_contract_intelligence(contract_id)
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise _map_extraction_service_error(error)
 
 @router.post("/upload", response_model=ContractResponse)
 async def upload_contract(

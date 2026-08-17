@@ -27,6 +27,7 @@ class Settings(BaseSettings):
 
     # AI (Gemini) — wired in later phases
     GEMINI_API_KEY: str | None = None
+    GEMINI_MODEL: str | None = None
 
 
 @lru_cache

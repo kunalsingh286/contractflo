@@ -7,6 +7,7 @@ from app.services.document_service import (
     extract_text_from_storage,
     get_service_role_client,
 )
+from app.services.embedding_service import process_document_embeddings
 from app.services.gemini_service import extract_contract_intelligence
 
 from .deps import get_current_user, get_supabase_client
@@ -31,7 +32,14 @@ def process_contract_background(contract_id: str, document_id: str, storage_path
             }).eq("id", document_id).execute()
             return
             
-        # 2. Extract intelligence with Gemini
+        # 2. Generate chunks and embeddings in Qdrant
+        # We need the org_id to properly isolate vectors
+        org_res = supabase.table("contracts").select("organization_id").eq("id", contract_id).execute()
+        if org_res.data:
+            org_id = org_res.data[0]["organization_id"]
+            process_document_embeddings(org_id, contract_id, document_id, text)
+            
+        # 3. Extract intelligence with Gemini
         intelligence = extract_contract_intelligence(text)
         
         # 3. Store intelligence in DB

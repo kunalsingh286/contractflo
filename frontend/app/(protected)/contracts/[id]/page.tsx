@@ -8,9 +8,10 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { format } from 'date-fns'
-import { ArrowLeft, Download, Trash2, FileText, Info, History, Brain, Loader2, ShieldAlert } from 'lucide-react'
+import { format, isBefore, startOfDay } from 'date-fns'
+import { ArrowLeft, Download, Trash2, FileText, Info, History, Brain, Loader2, ShieldAlert, ClipboardList, CheckCircle2, CalendarX2, MessageSquare } from 'lucide-react'
 import Link from 'next/link'
+import { ChatInterface } from '@/components/copilot/chat-interface'
 
 export default function ContractDetailsPage() {
   const params = useParams()
@@ -30,10 +31,33 @@ export default function ContractDetailsPage() {
   const [riskStatus, setRiskStatus] = useState<any>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [riskData, setRiskData] = useState<any>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [obStatus, setObStatus] = useState<any>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [obligations, setObligations] = useState<any[]>([])
 
   useEffect(() => {
     let intelInterval: NodeJS.Timeout
     let riskInterval: NodeJS.Timeout
+    let obInterval: NodeJS.Timeout
+
+    async function loadObligations(autoStart = false) {
+       try {
+         const oStatus = await fetchAPI(`/contracts/${contractId}/obligations/status`)
+         setObStatus(oStatus)
+         if (oStatus?.status === 'completed') {
+            const oData = await fetchAPI(`/contracts/${contractId}/obligations`)
+            setObligations(oData)
+         } else if (oStatus?.status === 'processing' || oStatus?.status === 'pending') {
+            obInterval = setTimeout(() => loadObligations(), 3000)
+         } else if (autoStart && (!oStatus || oStatus.status === 'none')) {
+            await fetchAPI(`/contracts/${contractId}/obligation-analysis`, { method: 'POST' })
+            obInterval = setTimeout(() => loadObligations(), 3000)
+         }
+       } catch (err) {
+         console.error('Obligation fetch error', err)
+       }
+    }
     
     async function loadRisk(autoStart = false) {
        try {
@@ -61,6 +85,7 @@ export default function ContractDetailsPage() {
            const intelData = await fetchAPI(`/contracts/${contractId}/intelligence`)
            setIntelligence(intelData)
            loadRisk(true)
+           loadObligations(true)
         } else if (statusData?.extraction_status === 'processing' || statusData?.extraction_status === 'pending') {
            intelInterval = setTimeout(loadIntelligence, 3000)
         }
@@ -72,6 +97,7 @@ export default function ContractDetailsPage() {
     return () => {
       clearTimeout(intelInterval)
       clearTimeout(riskInterval)
+      clearTimeout(obInterval)
     }
   }, [contractId])
 
@@ -218,6 +244,8 @@ export default function ContractDetailsPage() {
                   <TabsTrigger value="history" className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent px-6 py-3">History</TabsTrigger>
                   <TabsTrigger value="intelligence" className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent px-6 py-3 flex items-center gap-2"><Brain className="w-4 h-4"/> Intelligence</TabsTrigger>
                   <TabsTrigger value="risk" className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent px-6 py-3 flex items-center gap-2"><ShieldAlert className="w-4 h-4"/> Risk Analysis</TabsTrigger>
+                  <TabsTrigger value="obligations" className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent px-6 py-3 flex items-center gap-2"><ClipboardList className="w-4 h-4"/> Obligations</TabsTrigger>
+                  <TabsTrigger value="copilot" className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent px-6 py-3 flex items-center gap-2"><MessageSquare className="w-4 h-4"/> Copilot</TabsTrigger>
                 </TabsList>
                 
                 <TabsContent value="details" className="p-6 space-y-4">
@@ -456,6 +484,127 @@ export default function ContractDetailsPage() {
                       
                     </div>
                   )}
+                </TabsContent>
+
+                <TabsContent value="obligations" className="p-6">
+                  {(!obStatus || obStatus.status === 'none') && (
+                    <div className="text-center py-8 text-neutral-500">
+                      <ClipboardList className="w-8 h-8 mx-auto mb-3 opacity-20" />
+                      <p>No obligation analysis found.</p>
+                      <Button variant="outline" className="mt-4 bg-neutral-950 border-neutral-800" onClick={async () => {
+                        try {
+                           await fetchAPI(`/contracts/${contractId}/obligation-analysis`, { method: 'POST' })
+                           window.location.reload()
+                        } catch { alert('Failed to start obligation analysis') }
+                      }}>Run Obligation Analysis</Button>
+                    </div>
+                  )}
+                  {(obStatus?.status === 'processing' || obStatus?.status === 'pending') && (
+                    <div className="text-center py-8 text-blue-400 flex flex-col items-center">
+                      <Loader2 className="w-8 h-8 animate-spin mb-3" />
+                      <p className="font-medium">AI is extracting obligations...</p>
+                      <p className="text-xs text-neutral-500 mt-1">Identifying deliverables, payments, and notices</p>
+                    </div>
+                  )}
+                  {(obStatus?.status === 'failed') && (
+                    <div className="text-center py-8 text-red-400">
+                      <Info className="w-8 h-8 mx-auto mb-3 opacity-50" />
+                      <p>Obligation Extraction failed.</p>
+                      <p className="text-xs mt-1 text-red-500/70">{obStatus.error}</p>
+                    </div>
+                  )}
+                  {obStatus?.status === 'completed' && (
+                    <div className="space-y-6">
+                      <div className="flex items-center justify-between">
+                        <Badge className="bg-blue-600/20 text-blue-400 border-blue-500/30">
+                          {obligations.length} Obligations Extracted
+                        </Badge>
+                      </div>
+                      
+                      {obligations.length === 0 ? (
+                        <div className="bg-neutral-950 p-6 rounded border border-neutral-800 text-center text-neutral-400">
+                           No explicit obligations were found in this contract.
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                          {obligations.map((ob: any) => {
+                             let isOverdue = false
+                             if (ob.status === 'open' && ob.due_date_type === 'exact' && ob.due_date) {
+                                isOverdue = isBefore(startOfDay(new Date(ob.due_date)), startOfDay(new Date()))
+                             }
+                             
+                             return (
+                               <div key={ob.id} className="bg-neutral-950 p-4 rounded border border-neutral-800 space-y-4">
+                                 <div className="flex justify-between items-start">
+                                    <div>
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <Badge variant="secondary" className="bg-neutral-800 text-xs capitalize">{ob.type}</Badge>
+                                        <span className="font-semibold text-lg">{ob.title}</span>
+                                      </div>
+                                      <p className="text-sm text-neutral-300 mt-2">{ob.description}</p>
+                                    </div>
+                                    <div className="text-right">
+                                       {ob.status === 'completed' ? (
+                                          <Badge className="bg-green-500/10 text-green-500 border-green-500/20 flex items-center gap-1"><CheckCircle2 className="w-3 h-3"/> Completed</Badge>
+                                       ) : isOverdue ? (
+                                          <Badge className="bg-red-500/10 text-red-500 border-red-500/20 flex items-center gap-1"><CalendarX2 className="w-3 h-3"/> Overdue</Badge>
+                                       ) : (
+                                          <Badge className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20">Open</Badge>
+                                       )}
+                                    </div>
+                                 </div>
+                                 
+                                 <div className="grid grid-cols-2 gap-4 text-sm bg-neutral-900/50 p-3 rounded">
+                                    <div>
+                                       <span className="text-neutral-500 block mb-1">Responsible Party</span>
+                                       <span className="font-medium">{ob.responsible_party || '-'}</span>
+                                    </div>
+                                    <div>
+                                       <span className="text-neutral-500 block mb-1">Due Date</span>
+                                       <span className={`font-medium ${isOverdue ? 'text-red-400' : ''}`}>
+                                          {ob.due_date_type === 'exact' && ob.due_date ? format(new Date(ob.due_date), 'MMM d, yyyy') : 
+                                           ob.due_date_type === 'not_specified' ? 'No specific deadline' : 
+                                           ob.due_date_type === 'recurring' ? `Recurring: ${ob.due_date_expression || ob.recurrence}` :
+                                           ob.due_date_expression || 'See details'}
+                                       </span>
+                                    </div>
+                                 </div>
+                                 
+                                 <div className="bg-neutral-900 p-3 rounded text-sm text-neutral-400 border border-neutral-800 border-l-2 border-l-blue-500 italic">
+                                   &quot;{ob.evidence}&quot;
+                                   {ob.source_clause && <span className="block mt-2 text-xs text-neutral-500 not-italic font-medium">Source: {ob.source_clause}</span>}
+                                 </div>
+                                 
+                                 {ob.status === 'open' && (
+                                   <div className="pt-2 flex justify-end">
+                                      <Button variant="outline" size="sm" className="bg-neutral-950 border-neutral-800 text-neutral-300 hover:text-green-400 hover:border-green-400/50" onClick={async () => {
+                                         try {
+                                            await fetchAPI(`/obligations/${ob.id}`, {
+                                               method: 'PATCH',
+                                               body: JSON.stringify({ status: 'completed' })
+                                            })
+                                            window.location.reload()
+                                         } catch (err) {
+                                            console.error(err)
+                                            alert('Failed to update status')
+                                         }
+                                      }}>
+                                         Mark Completed
+                                      </Button>
+                                   </div>
+                                 )}
+                               </div>
+                             )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="copilot" className="p-0 border-t border-neutral-800">
+                   <ChatInterface contractId={contractId} />
                 </TabsContent>
               </Tabs>
             </CardContent>

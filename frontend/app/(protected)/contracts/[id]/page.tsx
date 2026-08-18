@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { format } from 'date-fns'
-import { ArrowLeft, Download, Trash2, FileText, Info, History, Brain, Loader2 } from 'lucide-react'
+import { ArrowLeft, Download, Trash2, FileText, Info, History, Brain, Loader2, ShieldAlert } from 'lucide-react'
 import Link from 'next/link'
 
 export default function ContractDetailsPage() {
@@ -26,9 +26,33 @@ export default function ContractDetailsPage() {
   const [intelStatus, setIntelStatus] = useState<any>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [intelligence, setIntelligence] = useState<any>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [riskStatus, setRiskStatus] = useState<any>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [riskData, setRiskData] = useState<any>(null)
 
   useEffect(() => {
-    let interval: NodeJS.Timeout
+    let intelInterval: NodeJS.Timeout
+    let riskInterval: NodeJS.Timeout
+    
+    async function loadRisk(autoStart = false) {
+       try {
+         const rStatus = await fetchAPI(`/contracts/${contractId}/risks/status`)
+         setRiskStatus(rStatus)
+         if (rStatus?.status === 'completed') {
+            const rData = await fetchAPI(`/contracts/${contractId}/risks`)
+            setRiskData(rData)
+         } else if (rStatus?.status === 'processing' || rStatus?.status === 'pending') {
+            riskInterval = setTimeout(() => loadRisk(), 3000)
+         } else if (autoStart && (!rStatus || rStatus.status === 'none')) {
+            await fetchAPI(`/contracts/${contractId}/risk-analysis`, { method: 'POST' })
+            riskInterval = setTimeout(() => loadRisk(), 3000)
+         }
+       } catch (err) {
+         console.error('Risk fetch error', err)
+       }
+    }
+
     async function loadIntelligence() {
       try {
         const statusData = await fetchAPI(`/contracts/${contractId}/intelligence/status`)
@@ -36,15 +60,19 @@ export default function ContractDetailsPage() {
         if (statusData?.extraction_status === 'completed') {
            const intelData = await fetchAPI(`/contracts/${contractId}/intelligence`)
            setIntelligence(intelData)
+           loadRisk(true)
         } else if (statusData?.extraction_status === 'processing' || statusData?.extraction_status === 'pending') {
-           interval = setTimeout(loadIntelligence, 3000)
+           intelInterval = setTimeout(loadIntelligence, 3000)
         }
       } catch (err) {
         console.error('Intelligence fetch error', err)
       }
     }
     loadIntelligence()
-    return () => clearTimeout(interval)
+    return () => {
+      clearTimeout(intelInterval)
+      clearTimeout(riskInterval)
+    }
   }, [contractId])
 
   useEffect(() => {
@@ -189,6 +217,7 @@ export default function ContractDetailsPage() {
                   <TabsTrigger value="details" className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent px-6 py-3">Details</TabsTrigger>
                   <TabsTrigger value="history" className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent px-6 py-3">History</TabsTrigger>
                   <TabsTrigger value="intelligence" className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent px-6 py-3 flex items-center gap-2"><Brain className="w-4 h-4"/> Intelligence</TabsTrigger>
+                  <TabsTrigger value="risk" className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent px-6 py-3 flex items-center gap-2"><ShieldAlert className="w-4 h-4"/> Risk Analysis</TabsTrigger>
                 </TabsList>
                 
                 <TabsContent value="details" className="p-6 space-y-4">
@@ -303,6 +332,128 @@ export default function ContractDetailsPage() {
                           </div>
                         </div>
                       )}
+                    </div>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="risk" className="p-6">
+                  {(!riskStatus || riskStatus.status === 'none') && (
+                    <div className="text-center py-8 text-neutral-500">
+                      <ShieldAlert className="w-8 h-8 mx-auto mb-3 opacity-20" />
+                      <p>No risk analysis found.</p>
+                      <Button variant="outline" className="mt-4 bg-neutral-950 border-neutral-800" onClick={async () => {
+                        try {
+                           await fetchAPI(`/contracts/${contractId}/risk-analysis`, { method: 'POST' })
+                           window.location.reload()
+                        } catch { alert('Failed to start risk analysis') }
+                      }}>Run Risk Analysis</Button>
+                    </div>
+                  )}
+                  {(riskStatus?.status === 'processing' || riskStatus?.status === 'pending') && (
+                    <div className="text-center py-8 text-blue-400 flex flex-col items-center">
+                      <Loader2 className="w-8 h-8 animate-spin mb-3" />
+                      <p className="font-medium">AI is analyzing risks...</p>
+                      <p className="text-xs text-neutral-500 mt-1">Evaluating legal and business implications</p>
+                    </div>
+                  )}
+                  {(riskStatus?.status === 'failed') && (
+                    <div className="text-center py-8 text-red-400">
+                      <Info className="w-8 h-8 mx-auto mb-3 opacity-50" />
+                      <p>Risk Analysis failed.</p>
+                      <p className="text-xs mt-1 text-red-500/70">{riskStatus.error}</p>
+                    </div>
+                  )}
+                  {riskStatus?.status === 'completed' && riskData && (
+                    <div className="space-y-6">
+                      <div className="flex items-center justify-between">
+                        <Badge className="bg-blue-600/20 text-blue-400 border-blue-500/30">
+                          {riskData.model_name || 'AI Evaluated'}
+                        </Badge>
+                        <span className="text-xs text-neutral-500">Analyzed {format(new Date(riskData.analyzed_at), 'MMM d, yyyy h:mm a')}</span>
+                      </div>
+                      
+                      <div className="bg-neutral-950 p-4 rounded border border-neutral-800 flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-neutral-400">Overall Risk Score</p>
+                          <div className="text-3xl font-bold mt-1">
+                             <span className={
+                               riskData.risk_level === 'Critical' ? 'text-red-500' :
+                               riskData.risk_level === 'High' ? 'text-orange-500' :
+                               riskData.risk_level === 'Medium' ? 'text-yellow-500' :
+                               'text-green-500'
+                             }>{riskData.risk_score}</span>
+                             <span className="text-neutral-600 text-lg">/100</span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm text-neutral-400 mb-1">Risk Level</p>
+                          <Badge variant="outline" className={
+                               riskData.risk_level === 'Critical' ? 'bg-red-500/10 text-red-500 border-red-500/20' :
+                               riskData.risk_level === 'High' ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' :
+                               riskData.risk_level === 'Medium' ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20' :
+                               'bg-green-500/10 text-green-500 border-green-500/20'
+                          }>
+                            {riskData.risk_level}
+                          </Badge>
+                        </div>
+                      </div>
+                      
+                      {/* Render Findings */}
+                      {['high', 'medium', 'low'].map(severity => {
+                        const findings = riskData.findings?.[severity]
+                        if (!findings || findings.length === 0) return null
+                        
+                        return (
+                          <div key={severity} className="space-y-3">
+                            <h3 className="text-sm font-medium uppercase tracking-wider flex items-center gap-2">
+                              {severity === 'high' ? <ShieldAlert className="w-4 h-4 text-orange-500"/> : null}
+                              {severity === 'medium' ? <ShieldAlert className="w-4 h-4 text-yellow-500"/> : null}
+                              {severity === 'low' ? <Info className="w-4 h-4 text-green-500"/> : null}
+                              {severity} Risks ({findings.length})
+                            </h3>
+                            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                            {findings.map((finding: any, i: number) => (
+                              <div key={i} className="bg-neutral-950 p-4 rounded border border-neutral-800 space-y-3">
+                                <div>
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <Badge variant="secondary" className="bg-neutral-800 text-xs">{finding.category}</Badge>
+                                    <span className="font-semibold">{finding.title}</span>
+                                  </div>
+                                  <p className="text-sm text-neutral-300">{finding.explanation}</p>
+                                </div>
+                                <div className="bg-neutral-900 p-3 rounded text-sm text-neutral-400 border border-neutral-800 border-l-2 border-l-blue-500 italic">
+                                  &quot;{finding.evidence}&quot;
+                                </div>
+                                <div>
+                                  <p className="text-xs text-neutral-500 font-medium">Recommendation</p>
+                                  <p className="text-sm text-blue-400">{finding.recommendation}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )
+                      })}
+                      
+                      {riskData.missing_clauses && riskData.missing_clauses.length > 0 && (
+                        <div className="space-y-3 pt-4 border-t border-neutral-800">
+                           <h3 className="text-sm font-medium uppercase tracking-wider">Missing Protections</h3>
+                           {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                           {riskData.missing_clauses.map((mc: any, i: number) => (
+                              <div key={i} className="bg-neutral-950 p-3 rounded border border-neutral-800 flex justify-between items-start gap-4">
+                                <div>
+                                  <p className="font-medium text-sm">{mc.category}</p>
+                                  <p className="text-sm text-neutral-400 mt-1">{mc.explanation}</p>
+                                </div>
+                                <Badge variant="outline" className={
+                                  mc.importance === 'high' ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' : 'bg-neutral-800 text-neutral-400'
+                                }>
+                                  {mc.importance} impact
+                                </Badge>
+                              </div>
+                           ))}
+                        </div>
+                      )}
+                      
                     </div>
                   )}
                 </TabsContent>

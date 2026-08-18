@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { format } from 'date-fns'
-import { ArrowLeft, Download, Trash2, FileText, Info, History } from 'lucide-react'
+import { ArrowLeft, Download, Trash2, FileText, Info, History, Brain, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 
 export default function ContractDetailsPage() {
@@ -21,6 +21,31 @@ export default function ContractDetailsPage() {
   const [contract, setContract] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [statusUpdating, setStatusUpdating] = useState(false)
+  
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [intelStatus, setIntelStatus] = useState<any>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [intelligence, setIntelligence] = useState<any>(null)
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout
+    async function loadIntelligence() {
+      try {
+        const statusData = await fetchAPI(`/contracts/${contractId}/intelligence/status`)
+        setIntelStatus(statusData)
+        if (statusData?.extraction_status === 'completed') {
+           const intelData = await fetchAPI(`/contracts/${contractId}/intelligence`)
+           setIntelligence(intelData)
+        } else if (statusData?.extraction_status === 'processing' || statusData?.extraction_status === 'pending') {
+           interval = setTimeout(loadIntelligence, 3000)
+        }
+      } catch (err) {
+        console.error('Intelligence fetch error', err)
+      }
+    }
+    loadIntelligence()
+    return () => clearTimeout(interval)
+  }, [contractId])
 
   useEffect(() => {
     async function loadContract() {
@@ -163,6 +188,7 @@ export default function ContractDetailsPage() {
                 <TabsList className="w-full justify-start rounded-none border-b border-neutral-800 bg-transparent p-0">
                   <TabsTrigger value="details" className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent px-6 py-3">Details</TabsTrigger>
                   <TabsTrigger value="history" className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent px-6 py-3">History</TabsTrigger>
+                  <TabsTrigger value="intelligence" className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent px-6 py-3 flex items-center gap-2"><Brain className="w-4 h-4"/> Intelligence</TabsTrigger>
                 </TabsList>
                 
                 <TabsContent value="details" className="p-6 space-y-4">
@@ -199,6 +225,86 @@ export default function ContractDetailsPage() {
                       </div>
                     ))}
                   </div>
+                </TabsContent>
+                
+                <TabsContent value="intelligence" className="p-6">
+                  {(!intelStatus || intelStatus.status === 'none') && (
+                    <div className="text-center py-8 text-neutral-500">
+                      <Brain className="w-8 h-8 mx-auto mb-3 opacity-20" />
+                      <p>No intelligence analysis found.</p>
+                      <Button variant="outline" className="mt-4 bg-neutral-950 border-neutral-800" onClick={async () => {
+                        try {
+                           await fetchAPI(`/contracts/${contractId}/analyze`, { method: 'POST' })
+                           window.location.reload()
+                        } catch { alert('Failed to start analysis') }
+                      }}>Run Analysis</Button>
+                    </div>
+                  )}
+                  {(intelStatus?.extraction_status === 'processing' || intelStatus?.extraction_status === 'pending') && (
+                    <div className="text-center py-8 text-blue-400 flex flex-col items-center">
+                      <Loader2 className="w-8 h-8 animate-spin mb-3" />
+                      <p className="font-medium">AI is analyzing this contract...</p>
+                      <p className="text-xs text-neutral-500 mt-1">Extracting text and identifying key clauses</p>
+                    </div>
+                  )}
+                  {(intelStatus?.extraction_status === 'failed' || intelStatus?.extraction_status === 'requires_ocr') && (
+                    <div className="text-center py-8 text-red-400">
+                      <Info className="w-8 h-8 mx-auto mb-3 opacity-50" />
+                      <p>Analysis failed or requires OCR.</p>
+                      <p className="text-xs mt-1 text-red-500/70">{intelStatus.extraction_error}</p>
+                    </div>
+                  )}
+                  {intelStatus?.extraction_status === 'completed' && intelligence && (
+                    <div className="space-y-6">
+                      <div className="flex items-center justify-between">
+                        <Badge className="bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 border-blue-500/30">
+                          {intelligence.model_name || 'AI Extracted'}
+                        </Badge>
+                        <span className="text-xs text-neutral-500">Analyzed {format(new Date(intelligence.analyzed_at), 'MMM d, yyyy h:mm a')}</span>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-neutral-950 p-3 rounded border border-neutral-800">
+                          <p className="text-xs text-neutral-500 mb-1">Contract Type</p>
+                          <p className="font-medium">{intelligence.contract_type || 'Unknown'}</p>
+                        </div>
+                        <div className="bg-neutral-950 p-3 rounded border border-neutral-800">
+                          <p className="text-xs text-neutral-500 mb-1">Effective Date</p>
+                          <p className="font-medium">{intelligence.effective_date || 'Not found'}</p>
+                        </div>
+                        <div className="bg-neutral-950 p-3 rounded border border-neutral-800">
+                          <p className="text-xs text-neutral-500 mb-1">Expiration Date</p>
+                          <p className="font-medium">{intelligence.expiration_date || 'Not found'}</p>
+                        </div>
+                        <div className="bg-neutral-950 p-3 rounded border border-neutral-800">
+                          <p className="text-xs text-neutral-500 mb-1">Renewal Date</p>
+                          <p className="font-medium">{intelligence.renewal_date || 'Not found'}</p>
+                        </div>
+                      </div>
+                      
+                      {intelligence.payment_terms && (
+                        <div className="bg-neutral-950 p-4 rounded border border-neutral-800">
+                          <p className="text-xs text-neutral-500 mb-2">Payment Terms</p>
+                          <p className="text-sm">{intelligence.payment_terms}</p>
+                        </div>
+                      )}
+                      
+                      {intelligence.parties && intelligence.parties.length > 0 && (
+                        <div className="border-t border-neutral-800 pt-4">
+                          <p className="text-sm font-medium mb-3">Parties Identified</p>
+                          <div className="space-y-2">
+                            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                            {intelligence.parties.map((p: any, i: number) => (
+                              <div key={i} className="flex justify-between items-center bg-neutral-950 p-2 px-3 rounded border border-neutral-800">
+                                <span className="font-medium text-sm">{p.name}</span>
+                                {p.role && <Badge variant="secondary" className="bg-neutral-800 text-xs">{p.role}</Badge>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </TabsContent>
               </Tabs>
             </CardContent>

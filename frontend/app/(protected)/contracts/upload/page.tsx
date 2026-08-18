@@ -30,6 +30,15 @@ export default function UploadContractPage() {
         body: formData,
       })
       
+      // Auto-trigger intelligence analysis
+      try {
+        await fetchAPI(`/contracts/${res.id}/analyze`, {
+          method: 'POST'
+        })
+      } catch (analyzeErr) {
+        console.error('Failed to start analysis automatically:', analyzeErr)
+      }
+      
       router.push(`/contracts/${res.id}`)
     } catch (error) {
       alert((error as Error).message || 'Upload failed')

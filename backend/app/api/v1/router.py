@@ -2,7 +2,15 @@
 
 from fastapi import APIRouter
 
-from app.api import contracts, copilot, intelligence, obligations, risks, search
+from app.api import (
+    analytics,
+    contracts,
+    copilot,
+    intelligence,
+    obligations,
+    risks,
+    search,
+)
 from app.api.v1.endpoints import health
 
 api_router = APIRouter()
@@ -13,3 +21,4 @@ api_router.include_router(risks.router)
 api_router.include_router(obligations.router)
 api_router.include_router(copilot.router)
 api_router.include_router(search.router)
+api_router.include_router(analytics.router)

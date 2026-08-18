@@ -1,11 +1,16 @@
 import json
+import os
+import time
 import uuid
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from supabase import Client
 
-from .deps import get_current_user, get_supabase_client
-from .models import ContractResponse
+from app.api.deps import get_current_user, get_supabase_client
+from app.api.schemas.contracts import (
+    ContractResponse,
+)
+from app.services.audit_service import log_audit_event
 
 router = APIRouter(prefix="/contracts", tags=["Contracts"])
 
@@ -43,63 +48,76 @@ async def upload_contract(
     # To pass RLS, we must set the auth session or JWT on the client. 
     # But for a backend service, it is often simpler to just use the service_role key to bypass RLS, 
     # and rely on the FastAPI code for authorization (which we just did by checking org_res).
-    # Since we are using standard anon client, we'll try to set the session.
-    # We will assume RLS policies in the DB protect access, but let's just upload using the standard client.
-    # If the client isn't authenticated, the upload will fail due to RLS.
-    # We will pass the jwt token to the supabase client headers.
     
-    # For a robust backend, we should use a service role client to upload, 
-    # or ensure RLS is bypassed since the backend handles auth. We'll proceed with standard upload for now.
+    # Upload to Supabase Storage
+    file_ext = os.path.splitext(file.filename)[1].lower() if file.filename else ".pdf"
+    safe_filename = f"{uuid.uuid4()}{file_ext}"
+    storage_path = f"{org_id}/{int(time.time())}_{safe_filename}"
+    
+    file_content = file.file.read()
+    
     try:
-        supabase.storage.from_("contracts").upload(
-            path=storage_path,
-            file=file_bytes,
-            file_options={"content-type": file.content_type}
-        )
+        supabase.storage.from_("contracts").upload(storage_path, file_content)
     except Exception as e:
-        # If RLS fails, this might throw.
-        print(e)
-        pass # Will rely on DB insert success for now if storage throws depending on supabase-py behavior
-    
-    # Insert DB record
+        raise HTTPException(status_code=500, detail=f"Storage upload failed: {e}")
+
+    # Insert into DB
     contract_data = {
-        "id": contract_id,
         "organization_id": org_id,
         "uploaded_by": user.id,
-        "title": title,
+        "title": title or (file.filename or "Untitled Contract"),
         "contract_type": contract_type,
         "status": status,
         "counterparty": counterparty,
         "description": description,
         "storage_path": storage_path,
         "file_name": file.filename,
-        "file_size": len(file_bytes),
+        "file_size": len(file_content),
         "mime_type": file.content_type
     }
     
-    res = supabase.table("contracts").insert(contract_data).execute()
-    new_contract = res.data[0]
-    
-    # Insert tags
-    if tags:
+    try:
+        res = supabase.table("contracts").insert(contract_data).execute()
+        new_contract = res.data[0]
+        contract_id = new_contract["id"]
+        
+        # Insert tags if provided
+        if tags:
+            try:
+                tag_list = json.loads(tags)
+                if tag_list:
+                    tag_data = [{"contract_id": contract_id, "tag_name": t} for t in tag_list]
+                    supabase.table("contract_tags").insert(tag_data).execute()
+            except Exception:
+                pass
+                
+        # Insert version
+        version_data = {
+            "contract_id": contract_id,
+            "version_number": 1,
+            "storage_path": storage_path,
+            "uploaded_by": user.id
+        }
+        supabase.table("contract_versions").insert(version_data).execute()
+        
+        log_audit_event(
+            supabase=supabase,
+            organization_id=org_id,
+            user_id=user.id,
+            action="CONTRACT_CREATED",
+            resource_type="contract",
+            resource_id=contract_id,
+            metadata={"title": new_contract["title"]}
+        )
+        
+        return new_contract
+    except Exception as e:
+        # Rollback storage if db fails
         try:
-            tag_list = json.loads(tags)
-            if tag_list:
-                tag_data = [{"contract_id": contract_id, "tag_name": t} for t in tag_list]
-                supabase.table("contract_tags").insert(tag_data).execute()
+            supabase.storage.from_("contracts").remove([storage_path])
         except Exception:
             pass
-            
-    # Insert version
-    version_data = {
-        "contract_id": contract_id,
-        "version_number": 1,
-        "storage_path": storage_path,
-        "uploaded_by": user.id
-    }
-    supabase.table("contract_versions").insert(version_data).execute()
-    
-    return new_contract
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("", response_model=list[ContractResponse])
 def list_contracts(
@@ -157,12 +175,13 @@ def delete_contract(
     user = Depends(get_current_user),
     supabase: Client = Depends(get_supabase_client)
 ):
-    # Get storage path
-    contract_res = supabase.table("contracts").select("storage_path").eq("id", contract_id).execute()
+    contract_res = supabase.table("contracts").select("storage_path", "organization_id", "title").eq("id", contract_id).execute()
     if not contract_res.data:
         raise HTTPException(status_code=404, detail="Contract not found")
         
     storage_path = contract_res.data[0]["storage_path"]
+    org_id = contract_res.data[0]["organization_id"]
+    title = contract_res.data[0]["title"]
     
     # Delete from DB
     supabase.table("contracts").delete().eq("id", contract_id).execute()
@@ -172,6 +191,16 @@ def delete_contract(
         supabase.storage.from_("contracts").remove([storage_path])
     except Exception:
         pass
+        
+    log_audit_event(
+        supabase=supabase,
+        organization_id=org_id,
+        user_id=user.id,
+        action="CONTRACT_DELETED",
+        resource_type="contract",
+        resource_id=contract_id,
+        metadata={"title": title}
+    )
     
     return {"message": "Contract deleted successfully"}
 

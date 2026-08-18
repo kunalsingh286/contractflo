@@ -128,14 +128,14 @@ Guidelines: [docs/development-guidelines.md](./docs/development-guidelines.md)
 
 | Phase | Focus |
 |-------|-------|
-| **0** | Foundation — monorepo, tooling, docs *(current)* |
-| **1** | Authentication & multi-tenancy |
-| **2** | Database & core data models |
-| **3** | Contract ingestion |
-| **4** | Parsing & extraction |
-| **5** | Vector search & embeddings |
-| **6** | AI analysis & Q&A |
-| **7** | LangGraph workflows |
+| **0** | Foundation — monorepo, tooling, docs ✓ |
+| **1** | Authentication & multi-tenancy ✓ |
+| **2** | Contract repository ✓ |
+| **3** | Document processing & intelligence ✓ |
+| **4** | Risk analysis engine ✓ |
+| **5** | Obligation extraction engine ✓ |
+| **6** | Contract Copilot & Hybrid RAG ✓ |
+| **7** | LangGraph workflows *(current)* |
 | **8** | Contract operations |
 | **9** | Integrations & API platform |
 | **10** | Production hardening & scale |
@@ -144,15 +144,15 @@ Full roadmap: [docs/roadmap.md](./docs/roadmap.md)
 
 ---
 
-## Phase 0-2 Scope
+## Implemented Phases
 
 **Phase 0 (Foundation)**: Delivered the monorepo structure, Next.js/FastAPI scaffolds, and documentation.
 **Phase 1 (Authentication)**: Delivered Supabase Auth, organizations management, and RLS policies.
-**Phase 2 (Repository)**: Delivered the production-grade Contract Repository, including:
-- Supabase SQL schema for contracts and tags with strict RLS.
-- Secure file upload and download via Supabase Storage.
-- FastAPI REST endpoints (`/api/v1/contracts`).
-- Modern UI for uploading, listing, and viewing contracts using `shadcn/ui`.
+**Phase 2 (Repository)**: Delivered the production-grade Contract Repository, including secure file upload, schemas, and UI.
+**Phase 3 (Document Intelligence)**: Delivered Docling text extraction and Gemini-powered metadata extraction with strict Pydantic validation.
+**Phase 4 (Risk Intelligence)**: Delivered the AI Risk Engine identifying contract risks, missing clauses, and citations.
+**Phase 5 (Obligation Engine)**: Delivered the structured extraction of exact, relative, and recurring obligations with dynamic dashboard tracking.
+**Phase 6 (Contract Copilot)**: Delivered a hybrid structured + semantic (Qdrant FastEmbed) RAG copilot grounded strictly to the contract text.
 
 ---
 

@@ -4,7 +4,7 @@ import json
 import os
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.core.config import settings
 
@@ -74,6 +74,16 @@ class _ClausesSchema(BaseModel):
     ip_ownership: str | None = None
 
 
+class _ObligationCandidatesSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    deliverables: list[str] = Field(default_factory=list)
+    payment_obligations: list[str] = Field(default_factory=list)
+    notice_periods: list[str] = Field(default_factory=list)
+    reporting_requirements: list[str] = Field(default_factory=list)
+    renewal_obligations: list[str] = Field(default_factory=list)
+
+
 class _ContractAnalysisSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -90,6 +100,9 @@ class _ContractAnalysisSchema(BaseModel):
     payment_terms: _PaymentTermsSchema
     clauses: _ClausesSchema
     summary: str | None = None
+    obligation_candidates: _ObligationCandidatesSchema = Field(
+        default_factory=_ObligationCandidatesSchema
+    )
 
 
 class AIService:
@@ -172,6 +185,9 @@ class AIService:
             "Extract only information that is explicitly present in the contract. Never "
             "infer missing values, fill gaps, or guess intent from context. If a field is "
             "not stated, return null or an empty string rather than inventing content. "
+            "For obligation extraction, identify only obligations that are explicitly stated "
+            "in the contract. Never infer or invent obligations. For any obligation category "
+            "that is not present, return an empty list. "
             "Preserve party names exactly as written, including punctuation, spacing, and "
             "capitalization. Preserve legal terminology exactly as expressed in the source "
             "text. Classify the contract into only one of the following categories: NDA, "

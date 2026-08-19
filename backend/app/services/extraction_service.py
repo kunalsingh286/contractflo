@@ -103,6 +103,10 @@ class ExtractionService:
                 contract_id=contract_id,
                 payload=completed_payload,
             )
+            await self._upsert_obligations_record(
+                contract_id=contract_id,
+                obligation_candidates=analysis.get("obligation_candidates") or {},
+            )
             return ContractExtractionResponse.model_validate(extraction_row)
         except DocumentServiceError as exc:
             await self._mark_extraction_failed(contract_id, exc, started_at)
@@ -291,6 +295,33 @@ class ExtractionService:
                 )
 
         return rows[0]
+
+    async def _upsert_obligations_record(
+        self,
+        contract_id: UUID,
+        obligation_candidates: dict[str, Any],
+    ) -> None:
+        obligations_payload = {
+            "contract_id": str(contract_id),
+            "deliverables": obligation_candidates.get("deliverables") or [],
+            "payment_obligations": obligation_candidates.get("payment_obligations") or [],
+            "notice_periods": obligation_candidates.get("notice_periods") or [],
+            "reporting_requirements": obligation_candidates.get("reporting_requirements") or [],
+            "renewal_obligations": obligation_candidates.get("renewal_obligations") or [],
+        }
+
+        try:
+            await self._run_query(
+                self._supabase.table("obligations").upsert(
+                    obligations_payload,
+                    on_conflict="contract_id",
+                    returning="representation",
+                )
+            )
+        except Exception as exc:
+            raise ExtractionPersistenceError(
+                "Failed to save contract obligations."
+            ) from exc
 
     async def _run_query(self, query: Any) -> Any:
         return await asyncio.to_thread(query.execute)

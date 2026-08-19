@@ -22,6 +22,7 @@ class ContractExtractionResponse(BaseModel):
     key_dates: dict[str, Any] | None = None
     clauses: dict[str, Any] | None = None
     summary: str | None = None
+    obligation_candidates: dict[str, Any] | None = None
     extraction_status: ExtractionStatus
     extraction_error: str | None = None
     extracted_at: datetime | None = None

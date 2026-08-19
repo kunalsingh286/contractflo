@@ -7,9 +7,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from supabase import Client
 
 from app.api.deps import get_current_user, get_supabase_client
-from app.api.schemas.contracts import (
-    ContractResponse,
-)
+from app.api.models import ContractResponse
 from app.services.audit_service import log_audit_event
 
 router = APIRouter(prefix="/contracts", tags=["Contracts"])
@@ -54,10 +52,8 @@ async def upload_contract(
     safe_filename = f"{uuid.uuid4()}{file_ext}"
     storage_path = f"{org_id}/{int(time.time())}_{safe_filename}"
     
-    file_content = file.file.read()
-    
     try:
-        supabase.storage.from_("contracts").upload(storage_path, file_content)
+        supabase.storage.from_("contracts").upload(storage_path, file_bytes)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Storage upload failed: {e}")
 
@@ -72,7 +68,7 @@ async def upload_contract(
         "description": description,
         "storage_path": storage_path,
         "file_name": file.filename,
-        "file_size": len(file_content),
+        "file_size": len(file_bytes),
         "mime_type": file.content_type
     }
     

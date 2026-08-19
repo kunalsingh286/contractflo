@@ -9,50 +9,22 @@ from pydantic import BaseModel, Field
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
 class ObligationSchema(BaseModel):
-    type: Literal['deliverable', 'payment', 'notice', 'reporting', 'renewal'] = Field(
-        description="The category of the obligation."
-    )
-    title: str = Field(
-        description="A concise, 3-6 word title for the obligation."
-    )
-    description: str = Field(
-        description="A clear description of what must be done."
-    )
-    responsible_party: str | None = Field(
-        description="The party responsible for fulfilling this obligation (e.g., 'Customer', 'Vendor', specific company name). Null if unclear."
-    )
-    counterparty: str | None = Field(
-        description="The party receiving the benefit of the obligation. Null if unclear."
-    )
-    due_date: str | None = Field(
-        description="ONLY provide this if the contract specifies an exact calendar date (YYYY-MM-DD). NEVER invent or calculate a date based on relative terms."
-    )
-    due_date_type: Literal['exact', 'relative', 'recurring', 'event_based', 'not_specified'] = Field(
-        description="The type of deadline. 'exact' = specific calendar date. 'relative' = X days after Y. 'recurring' = every X. 'event_based' = upon X happening. 'not_specified' = no deadline mentioned."
-    )
-    due_date_expression: str | None = Field(
-        description="The exact contractual phrase defining the relative, recurring, or event-based deadline (e.g., '30 days after invoice receipt')."
-    )
-    recurrence: str | None = Field(
-        description="Description of recurrence if applicable (e.g., 'Monthly on the 5th')."
-    )
-    notice_period_days: int | None = Field(
-        description="If this is a notice obligation, the number of days required for the notice."
-    )
-    source_clause: str | None = Field(
-        description="The section or clause name where this obligation was found (e.g., 'Section 5.1')."
-    )
-    evidence: str = Field(
-        description="An EXACT QUOTE from the contract text proving this obligation exists. This is mandatory."
-    )
-    confidence: float = Field(
-        description="Confidence score between 0.0 and 1.0."
-    )
+    type: Literal['deliverable', 'payment', 'notice', 'reporting', 'renewal', 'other']
+    title: str
+    description: str
+    responsible_party: str | None
+    counterparty: str | None
+    due_date: str | None
+    due_date_type: Literal['exact', 'relative', 'recurring', 'event_based', 'not_specified']
+    due_date_expression: str | None
+    recurrence: str | None
+    notice_period_days: int | None
+    source_clause: str | None
+    evidence: str
+    confidence: float | str
 
 class ObligationAnalysisSchema(BaseModel):
-    obligations: list[ObligationSchema] = Field(
-        description="List of extracted obligations from the contract."
-    )
+    obligations: list[ObligationSchema] = []
 
 OBLIGATION_EXTRACTION_PROMPT = """
 You are an expert AI legal analyst specializing in contract intelligence.
@@ -69,6 +41,12 @@ CRITICAL RULES FOR DATES:
 3. Recurring ('recurring'): If the obligation happens regularly (e.g., "Monthly reports"), set `due_date` to null and populate `recurrence` and `due_date_expression`.
 4. Event-Based ('event_based'): If triggered by an event (e.g., "Upon termination"), set `due_date` to null and populate `due_date_expression`.
 5. Not Specified ('not_specified'): If there is no deadline.
+4. If a date is completely missing but the obligation requires one, set due_date_type to 'not_specified'.
+5. 'confidence' MUST be a float between 0.0 and 1.0, not a string.
+
+OUTPUT FORMAT:
+Return a JSON object with EXACTLY this key:
+- "obligations": array of objects (type, title, description, responsible_party, counterparty, due_date, due_date_type, due_date_expression, recurrence, notice_period_days, source_clause, evidence, confidence as a float from 0.0 to 1.0)
 
 CRITICAL RULES FOR EVIDENCE:
 Every obligation MUST have an `evidence` field containing an EXACT QUOTE from the contract text. No paraphrasing.
@@ -87,9 +65,10 @@ Contract Type: {contract_type}
 
 def extract_contract_obligations(contract_text: str, contract_type: str = "Unknown") -> ObligationAnalysisSchema:
     """
-    Extracts structured obligations from raw contract text using Gemini 1.5 Flash.
+    Extracts structured obligations from raw contract text using Gemini 3.6 Flash.
     """
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    model_name = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+    model = genai.GenerativeModel(model_name)
     
     prompt = OBLIGATION_EXTRACTION_PROMPT.format(
         contract_text=contract_text,
@@ -100,7 +79,6 @@ def extract_contract_obligations(contract_text: str, contract_type: str = "Unkno
         prompt,
         generation_config=genai.GenerationConfig(
             response_mime_type="application/json",
-            response_schema=ObligationAnalysisSchema,
             temperature=0.1,  # Low temperature for precise, non-creative extraction
         )
     )

@@ -24,7 +24,8 @@ export async function fetchAPI(endpoint: string, options: RequestInit = {}) {
     headers.set('Authorization', `Bearer ${session.access_token}`)
   }
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+  const basePath = endpoint.startsWith('/api/v1') ? '' : '/api/v1'
+  const response = await fetch(`${API_BASE_URL}${basePath}${endpoint}`, {
     ...options,
     headers,
   })

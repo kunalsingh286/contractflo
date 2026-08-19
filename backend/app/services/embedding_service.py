@@ -1,8 +1,13 @@
 import re
 import uuid
+from typing import List
+from fastembed import TextEmbedding
 
-from .vector_store import QDRANT_COLLECTION, get_qdrant_client
+from app.api.deps import get_supabase_client
 
+# Load model globally to avoid reloading on every upload
+# BAAI/bge-small-en-v1.5 outputs 384-dimensional embeddings
+embedding_model = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
 
 def chunk_markdown(text: str, max_chunk_length: int = 1000) -> list[dict]:
     """
@@ -60,37 +65,37 @@ def chunk_markdown(text: str, max_chunk_length: int = 1000) -> list[dict]:
 
 def process_document_embeddings(organization_id: str, contract_id: str, document_id: str, text: str):
     """
-    Chunks a document and uploads embeddings to Qdrant.
-    This uses FastEmbed under the hood via qdrant_client.add()
+    Chunks a document, generates embeddings locally using fastembed,
+    and bulk inserts them into Supabase pgvector table `contract_chunks`.
     """
-    client = get_qdrant_client()
+    supabase = get_supabase_client()
     
     chunks = chunk_markdown(text)
     
     if not chunks:
         return
         
-    documents = []
-    metadata = []
-    ids = []
+    documents = [chunk["text"] for chunk in chunks]
     
-    for chunk in chunks:
-        documents.append(chunk["text"])
-        metadata.append({
-            "organization_id": organization_id,
-            "contract_id": contract_id,
-            "contract_document_id": document_id,
-            "section_title": chunk["section_title"]
-        })
-        ids.append(str(uuid.uuid4()))
+    try:
+        # Generate embeddings locally
+        embeddings_generator = embedding_model.embed(documents)
+        embeddings = list(embeddings_generator)
         
-    # qdrant_client.add will automatically generate embeddings using FastEmbed
-    client.add(
-        collection_name=QDRANT_COLLECTION,
-        documents=documents,
-        metadata=metadata,
-        ids=ids,
-        batch_size=32,
-        parallel=0 # Use available CPU cores
-    )
-    print(f"Uploaded {len(chunks)} chunks to Qdrant for contract {contract_id}")
+        records = []
+        for i, chunk in enumerate(chunks):
+            records.append({
+                "organization_id": organization_id,
+                "contract_id": contract_id,
+                "contract_document_id": document_id,
+                "section_title": chunk["section_title"],
+                "text": chunk["text"],
+                "embedding": embeddings[i].tolist() # convert numpy array for JSON serialization
+            })
+            
+        # Bulk insert to Supabase pgvector
+        supabase.table("contract_chunks").insert(records).execute()
+        print(f"Uploaded {len(records)} chunk embeddings to Supabase pgvector for contract {contract_id}")
+        
+    except Exception as e:
+        print(f"WARNING: pgvector embedding skipped due to: {e}")

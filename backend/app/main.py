@@ -3,6 +3,9 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -67,6 +70,8 @@ def create_app() -> FastAPI:
 
     @application.exception_handler(Exception)
     async def generic_exception_handler(request, exc):
+        import traceback
+        traceback.print_exc()
         # Do not expose raw python exceptions to the frontend in production
         return JSONResponse(
             status_code=500,

@@ -3,13 +3,12 @@
 import { useEffect, useState } from 'react'
 import { fetchAPI } from '@/lib/api'
 import { Button } from '@/components/ui/button'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Badge } from '@/components/ui/badge'
 import { format } from 'date-fns'
 import Link from 'next/link'
-import { Plus, Search, FileText } from 'lucide-react'
+import { Plus, Search, FileText, Loader2, ArrowRight } from 'lucide-react'
 
 type Contract = {
   id: string
@@ -20,6 +19,14 @@ type Contract = {
   created_at: string
 }
 
+const statusColors: Record<string, string> = {
+  Draft: 'bg-neutral-800 text-neutral-400 border-neutral-700',
+  Review: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+  Approved: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+  Executed: 'bg-violet-500/10 text-violet-400 border-violet-500/20',
+  Expired: 'bg-red-500/10 text-red-400 border-red-500/20',
+}
+
 export default function ContractsPage() {
   const [contracts, setContracts] = useState<Contract[]>([])
   const [loading, setLoading] = useState(true)
@@ -27,116 +34,119 @@ export default function ContractsPage() {
   const [statusFilter, setStatusFilter] = useState('All')
 
   useEffect(() => {
-    async function loadContracts() {
-      try {
-        const data = await fetchAPI('/contracts')
-        setContracts(data)
-      } catch (err) {
-        console.error('Failed to load contracts:', err)
-      } finally {
-        setLoading(false)
-      }
-    }
-    loadContracts()
+    fetchAPI('/contracts').then(setContracts).catch(console.error).finally(() => setLoading(false))
   }, [])
 
-  const filteredContracts = contracts.filter(c => {
-    const matchesSearch = c.title.toLowerCase().includes(search.toLowerCase()) || 
-                          (c.counterparty?.toLowerCase() || '').includes(search.toLowerCase())
-    const matchesStatus = statusFilter === 'All' || c.status === statusFilter
-    return matchesSearch && matchesStatus
+  const filtered = contracts.filter(c => {
+    const matchSearch = c.title.toLowerCase().includes(search.toLowerCase()) ||
+      (c.counterparty?.toLowerCase() || '').includes(search.toLowerCase())
+    const matchStatus = statusFilter === 'All' || c.status === statusFilter
+    return matchSearch && matchStatus
   })
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6 text-neutral-50 min-h-screen">
-      <div className="flex justify-between items-center">
+    <div className="p-8 max-w-7xl mx-auto space-y-6 bg-neutral-950 min-h-screen text-neutral-50">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-neutral-800 pb-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Contracts</h1>
-          <p className="text-neutral-400 mt-1">Manage your organization&apos;s repository</p>
+          <h1 className="text-2xl font-bold tracking-tight text-white">Repository</h1>
+          <p className="text-sm text-neutral-500 mt-1">
+            {loading ? 'Loading...' : `${contracts.length} contract${contracts.length !== 1 ? 's' : ''} in your organization`}
+          </p>
         </div>
-        <Link href="/contracts/upload">
-          <Button className="bg-blue-600 hover:bg-blue-700 text-white">
-            <Plus className="w-4 h-4 mr-2" />
-            Upload Contract
-          </Button>
-        </Link>
+        <Button asChild className="bg-white text-black hover:bg-neutral-200 font-medium h-9">
+          <Link href="/contracts/upload">
+            <Plus className="w-4 h-4 mr-2" /> Upload Contract
+          </Link>
+        </Button>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-neutral-900 p-4 rounded-lg border border-neutral-800">
-        <div className="relative w-full sm:w-96">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-neutral-500" />
-          <Input 
-            placeholder="Search title or counterparty..." 
-            className="pl-9 bg-neutral-950 border-neutral-800"
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
+          <Input
+            placeholder="Search by title or counterparty..."
+            className="pl-9 bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-600 h-9"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={e => setSearch(e.target.value)}
           />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-full sm:w-[180px] bg-neutral-950 border-neutral-800">
-            <SelectValue placeholder="Filter by status" />
+          <SelectTrigger className="w-[160px] bg-neutral-900 border-neutral-800 text-neutral-300 h-9">
+            <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="All">All Statuses</SelectItem>
-            <SelectItem value="Draft">Draft</SelectItem>
-            <SelectItem value="Review">Review</SelectItem>
-            <SelectItem value="Approved">Approved</SelectItem>
-            <SelectItem value="Executed">Executed</SelectItem>
-            <SelectItem value="Expired">Expired</SelectItem>
+            {['All', 'Draft', 'Review', 'Approved', 'Executed', 'Expired'].map(s => (
+              <SelectItem key={s} value={s}>{s === 'All' ? 'All Statuses' : s}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
 
-      <div className="border border-neutral-800 rounded-lg overflow-hidden bg-neutral-900/50">
-        <Table>
-          <TableHeader className="bg-neutral-900">
-            <TableRow className="border-neutral-800 hover:bg-transparent">
-              <TableHead>Title</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Counterparty</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Created</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-neutral-400">Loading contracts...</TableCell>
-              </TableRow>
-            ) : filteredContracts.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-neutral-400">
-                  <FileText className="w-8 h-8 mx-auto mb-3 opacity-20" />
-                  No contracts found.
-                </TableCell>
-              </TableRow>
+      {/* Content */}
+      <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden">
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="w-6 h-6 animate-spin text-neutral-500" />
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="py-20 text-center">
+            <FileText className="w-10 h-10 text-neutral-700 mx-auto mb-3" />
+            {contracts.length === 0 ? (
+              <>
+                <p className="text-sm text-neutral-400 font-medium">No contracts yet</p>
+                <p className="text-xs text-neutral-600 mt-1 mb-4">Upload your first contract to get started</p>
+                <Button asChild size="sm" className="bg-blue-600 hover:bg-blue-500 text-white">
+                  <Link href="/contracts/upload"><Plus className="w-3.5 h-3.5 mr-1.5" /> Upload Contract</Link>
+                </Button>
+              </>
             ) : (
-              filteredContracts.map(contract => (
-                <TableRow key={contract.id} className="border-neutral-800 hover:bg-neutral-800/50">
-                  <TableCell className="font-medium text-blue-400">
-                    <Link href={`/contracts/${contract.id}`} className="hover:underline">
-                      {contract.title}
-                    </Link>
-                  </TableCell>
-                  <TableCell>{contract.contract_type}</TableCell>
-                  <TableCell>{contract.counterparty || '-'}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="bg-neutral-950 border-neutral-700">
-                      {contract.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{format(new Date(contract.created_at), 'MMM d, yyyy')}</TableCell>
-                  <TableCell className="text-right">
-                    <Link href={`/contracts/${contract.id}`}>
-                      <Button variant="ghost" size="sm" className="hover:bg-neutral-800">View</Button>
-                    </Link>
-                  </TableCell>
-                </TableRow>
-              ))
+              <>
+                <p className="text-sm text-neutral-500">No contracts match your filters</p>
+                <p className="text-xs text-neutral-600 mt-1">Try adjusting your search or status filter</p>
+              </>
             )}
-          </TableBody>
-        </Table>
+          </div>
+        ) : (
+          <div className="divide-y divide-neutral-800">
+            {/* Table Header */}
+            <div className="grid grid-cols-12 gap-4 px-5 py-3">
+              <p className="col-span-4 text-xs font-semibold text-neutral-500 uppercase tracking-wider">Title</p>
+              <p className="col-span-2 text-xs font-semibold text-neutral-500 uppercase tracking-wider">Type</p>
+              <p className="col-span-2 text-xs font-semibold text-neutral-500 uppercase tracking-wider">Counterparty</p>
+              <p className="col-span-2 text-xs font-semibold text-neutral-500 uppercase tracking-wider">Status</p>
+              <p className="col-span-2 text-xs font-semibold text-neutral-500 uppercase tracking-wider">Uploaded</p>
+            </div>
+            {filtered.map(contract => (
+              <Link
+                href={`/contracts/${contract.id}`}
+                key={contract.id}
+                className="grid grid-cols-12 gap-4 px-5 py-4 hover:bg-neutral-800/50 transition-colors group items-center"
+              >
+                <div className="col-span-4 flex items-center gap-2.5 min-w-0">
+                  <div className="w-7 h-7 bg-neutral-800 rounded-lg flex items-center justify-center shrink-0">
+                    <FileText className="w-3.5 h-3.5 text-neutral-400" />
+                  </div>
+                  <p className="text-sm font-medium text-neutral-200 group-hover:text-white truncate">
+                    {contract.title}
+                  </p>
+                </div>
+                <p className="col-span-2 text-sm text-neutral-400 truncate">{contract.contract_type}</p>
+                <p className="col-span-2 text-sm text-neutral-400 truncate">{contract.counterparty || '—'}</p>
+                <div className="col-span-2">
+                  <Badge variant="outline" className={`text-xs ${statusColors[contract.status] || 'bg-neutral-800 text-neutral-400 border-neutral-700'}`}>
+                    {contract.status}
+                  </Badge>
+                </div>
+                <div className="col-span-2 flex items-center justify-between">
+                  <p className="text-sm text-neutral-500">{format(new Date(contract.created_at), 'MMM d, yyyy')}</p>
+                  <ArrowRight className="w-4 h-4 text-neutral-700 group-hover:text-neutral-400 transition-colors shrink-0" />
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

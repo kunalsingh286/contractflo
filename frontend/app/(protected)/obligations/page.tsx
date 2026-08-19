@@ -2,202 +2,139 @@
 
 import { useEffect, useState } from 'react'
 import { fetchAPI } from '@/lib/api'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { CheckCircle2, Clock, CalendarDays, FileText, CalendarX2 } from 'lucide-react'
+import { CheckCircle2, Clock, CalendarDays, FileText, CalendarX2, Loader2, ArrowRight } from 'lucide-react'
 import { format, isBefore, addDays, startOfDay } from 'date-fns'
 import Link from 'next/link'
+import { useToast } from '@/components/ui/toast'
 
 export default function ObligationCenterPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [obligations, setObligations] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const { toast } = useToast()
 
   useEffect(() => {
-    async function loadObligations() {
-      try {
-        const data = await fetchAPI('/contracts/all/obligations')
-        setObligations(data)
-      } catch (err) {
-        console.error('Failed to load obligations', err)
-      } finally {
-        setLoading(false)
-      }
-    }
-    loadObligations()
+    fetchAPI('/contracts/all/obligations').then(setObligations).catch(console.error).finally(() => setLoading(false))
   }, [])
-
-  if (loading) {
-    return <div className="p-6 text-center text-neutral-400">Loading Obligation Center...</div>
-  }
 
   const today = startOfDay(new Date())
   const nextWeek = addDays(today, 7)
 
-  // Derived classification
-  const classifiedObligations = obligations.map(ob => {
+  const classified = obligations.map(ob => {
     let derivedStatus = ob.status
     let isDueSoon = false
-
     if (ob.status === 'open' && ob.due_date && ob.due_date_type === 'exact') {
       const due = startOfDay(new Date(ob.due_date))
-      if (isBefore(due, today)) {
-        derivedStatus = 'overdue'
-      } else if (isBefore(due, nextWeek) || due.getTime() === today.getTime()) {
-        isDueSoon = true
-      }
+      if (isBefore(due, today)) derivedStatus = 'overdue'
+      else if (isBefore(due, nextWeek)) isDueSoon = true
     }
     return { ...ob, derivedStatus, isDueSoon }
   })
 
-  // Metrics
-  const totalCount = classifiedObligations.length
-  const openCount = classifiedObligations.filter(o => o.derivedStatus === 'open').length
-  const completedCount = classifiedObligations.filter(o => o.derivedStatus === 'completed').length
-  const overdueCount = classifiedObligations.filter(o => o.derivedStatus === 'overdue').length
-  const dueSoonCount = classifiedObligations.filter(o => o.isDueSoon).length
+  const metrics = [
+    { label: 'Total', value: classified.length, color: 'text-white' },
+    { label: 'Open', value: classified.filter(o => o.derivedStatus === 'open').length, color: 'text-yellow-500', icon: <CalendarDays className="w-4 h-4 text-yellow-500" /> },
+    { label: 'Due Soon', value: classified.filter(o => o.isDueSoon).length, color: 'text-orange-500', icon: <Clock className="w-4 h-4 text-orange-500" /> },
+    { label: 'Overdue', value: classified.filter(o => o.derivedStatus === 'overdue').length, color: 'text-red-500', icon: <CalendarX2 className="w-4 h-4 text-red-500" /> },
+    { label: 'Completed', value: classified.filter(o => o.derivedStatus === 'completed').length, color: 'text-emerald-500', icon: <CheckCircle2 className="w-4 h-4 text-emerald-500" /> },
+  ]
 
-  const getStatusBadge = (status: string, dueType: string) => {
-    if (status === 'completed') return <Badge className="bg-green-500/10 text-green-500 border-green-500/20">Completed</Badge>
-    if (status === 'cancelled') return <Badge className="bg-neutral-800 text-neutral-400 border-neutral-700">Cancelled</Badge>
-    if (status === 'overdue') return <Badge className="bg-red-500/10 text-red-500 border-red-500/20 flex items-center gap-1"><CalendarX2 className="w-3 h-3"/> Overdue</Badge>
-    
-    // open
-    if (dueType === 'recurring') return <Badge className="bg-blue-500/10 text-blue-400 border-blue-500/20">Recurring</Badge>
-    return <Badge className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20">Open</Badge>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const StatusBadge = ({ ob }: { ob: any }) => {
+    if (ob.derivedStatus === 'completed') return <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-xs">Done</Badge>
+    if (ob.derivedStatus === 'overdue') return <Badge className="bg-red-500/10 text-red-500 border-red-500/20 text-xs flex items-center gap-1"><CalendarX2 className="w-3 h-3" /> Overdue</Badge>
+    if (ob.isDueSoon) return <Badge className="bg-orange-500/10 text-orange-500 border-orange-500/20 text-xs flex items-center gap-1"><Clock className="w-3 h-3" /> Due Soon</Badge>
+    if (ob.due_date_type === 'recurring') return <Badge className="bg-blue-500/10 text-blue-400 border-blue-500/20 text-xs">Recurring</Badge>
+    return <Badge className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20 text-xs">Open</Badge>
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const formatDue = (ob: any) => {
-    if (ob.due_date_type === 'exact' && ob.due_date) {
-      return format(new Date(ob.due_date), 'MMM d, yyyy')
+    if (ob.due_date_type === 'exact' && ob.due_date) return format(new Date(ob.due_date), 'MMM d, yyyy')
+    if (ob.due_date_type === 'recurring') return `Recurring`
+    return '—'
+  }
+
+  async function markDone(id: string) {
+    try {
+      await fetchAPI(`/obligations/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'completed' }) })
+      setObligations(prev => prev.map(o => o.id === id ? { ...o, status: 'completed' } : o))
+      toast('success', 'Obligation marked complete')
+    } catch {
+      toast('error', 'Failed to update obligation')
     }
-    if (ob.due_date_type === 'not_specified') {
-      return <span className="text-neutral-500">No specific deadline</span>
-    }
-    if (ob.due_date_type === 'recurring') {
-      return `Recurring: ${ob.due_date_expression || ob.recurrence}`
-    }
-    return ob.due_date_expression || 'See details'
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-8 text-neutral-50 min-h-screen">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Obligation Center</h1>
-        <p className="text-neutral-400 mt-1">Track and manage deliverables, payments, and notices across all contracts.</p>
+    <div className="p-8 max-w-7xl mx-auto space-y-6 bg-neutral-950 min-h-screen text-neutral-50">
+      <div className="border-b border-neutral-800 pb-6">
+        <h1 className="text-2xl font-bold tracking-tight text-white">Obligations</h1>
+        <p className="text-sm text-neutral-500 mt-1">Track deliverables, payments, and notices across all contracts</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        <Card className="bg-neutral-900 border-neutral-800 text-neutral-50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-neutral-400">Total Obligations</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalCount}</div>
-          </CardContent>
-        </Card>
-        
-        <Card className="bg-neutral-900 border-neutral-800 text-neutral-50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-neutral-400 flex items-center gap-2">
-              <CalendarDays className="w-4 h-4 text-yellow-500" /> Open
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-yellow-500">{openCount}</div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-neutral-900 border-neutral-800 text-neutral-50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-neutral-400 flex items-center gap-2">
-              <Clock className="w-4 h-4 text-orange-400" /> Due Soon
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-orange-400">{dueSoonCount}</div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-neutral-900 border-neutral-800 text-neutral-50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-neutral-400 flex items-center gap-2">
-              <CalendarX2 className="w-4 h-4 text-red-500" /> Overdue
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-500">{overdueCount}</div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-neutral-900 border-neutral-800 text-neutral-50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-neutral-400 flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-green-500" /> Completed
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-500">{completedCount}</div>
-          </CardContent>
-        </Card>
+      {/* KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {metrics.map(m => (
+          <div key={m.label} className="bg-neutral-900 border border-neutral-800 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">{m.label}</p>
+              {m.icon}
+            </div>
+            <p className={`text-3xl font-bold tracking-tight ${m.color}`}>{m.value}</p>
+          </div>
+        ))}
       </div>
 
-      <Card className="bg-neutral-900 border-neutral-800 text-neutral-50">
-        <CardHeader>
-          <CardTitle>All Obligations</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {classifiedObligations.length === 0 ? (
-            <div className="text-center py-12 text-neutral-500">
-              <FileText className="w-12 h-12 mx-auto mb-4 opacity-20" />
-              <p>No obligations found.</p>
-              <p className="text-sm mt-2">Upload and analyze contracts to extract obligations.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left">
-                <thead className="text-xs uppercase bg-neutral-950/50 text-neutral-400 border-b border-neutral-800">
-                  <tr>
-                    <th className="px-4 py-3">Contract</th>
-                    <th className="px-4 py-3">Type</th>
-                    <th className="px-4 py-3 min-w-[200px]">Title</th>
-                    <th className="px-4 py-3">Responsible</th>
-                    <th className="px-4 py-3">Due</th>
-                    <th className="px-4 py-3">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-neutral-800">
-                  {classifiedObligations.map(ob => (
-                    <tr key={ob.id} className="hover:bg-neutral-800/50 transition-colors">
-                      <td className="px-4 py-4 font-medium text-blue-400 hover:underline max-w-[200px] truncate">
-                        <Link href={`/contracts/${ob.contract_id}`}>
-                          {ob.contracts?.title || 'Unknown Contract'}
-                        </Link>
-                      </td>
-                      <td className="px-4 py-4">
-                        <Badge variant="outline" className="capitalize bg-neutral-800 text-neutral-300">
-                          {ob.type}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-4 font-medium">{ob.title}</td>
-                      <td className="px-4 py-4 text-neutral-300">{ob.responsible_party || '-'}</td>
-                      <td className="px-4 py-4">
-                        <span className={ob.derivedStatus === 'overdue' ? 'text-red-400 font-medium' : ob.isDueSoon ? 'text-orange-400 font-medium' : ''}>
-                           {formatDue(ob)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4">
-                        {getStatusBadge(ob.derivedStatus, ob.due_date_type)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Table */}
+      <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden">
+        <div className="px-5 py-4 border-b border-neutral-800">
+          <h2 className="text-sm font-medium text-neutral-200">All Obligations</h2>
+        </div>
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="w-6 h-6 animate-spin text-neutral-500" />
+          </div>
+        ) : classified.length === 0 ? (
+          <div className="py-20 text-center">
+            <FileText className="w-10 h-10 text-neutral-700 mx-auto mb-3" />
+            <p className="text-sm text-neutral-500">No obligations found.</p>
+            <p className="text-xs text-neutral-600 mt-1">Analyze a contract to extract obligations automatically.</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-neutral-800">
+            {classified.map(ob => (
+              <div key={ob.id} className="flex items-center gap-4 px-5 py-4 hover:bg-neutral-800/40 transition-colors group">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Badge variant="secondary" className="bg-neutral-800 text-neutral-400 text-xs capitalize shrink-0">{ob.type}</Badge>
+                    <p className="text-sm font-medium text-neutral-200 truncate">{ob.title}</p>
+                  </div>
+                  <Link href={`/contracts/${ob.contract_id}`} className="text-xs text-neutral-500 hover:text-blue-400 transition-colors">
+                    {ob.contracts?.title || 'Unknown Contract'} <ArrowRight className="w-3 h-3 inline" />
+                  </Link>
+                </div>
+                <div className="shrink-0 text-right min-w-[90px]">
+                  <p className={`text-xs font-medium ${ob.derivedStatus === 'overdue' ? 'text-red-400' : ob.isDueSoon ? 'text-orange-400' : 'text-neutral-400'}`}>
+                    {formatDue(ob)}
+                  </p>
+                </div>
+                <div className="shrink-0">
+                  <StatusBadge ob={ob} />
+                </div>
+                {ob.derivedStatus !== 'completed' && ob.derivedStatus !== 'cancelled' && (
+                  <button
+                    onClick={() => markDone(ob.id)}
+                    className="shrink-0 text-xs text-neutral-600 hover:text-emerald-400 transition-colors opacity-0 group-hover:opacity-100 whitespace-nowrap"
+                  >
+                    Mark done
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

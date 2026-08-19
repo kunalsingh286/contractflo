@@ -3,7 +3,6 @@ from typing import Any
 from supabase import Client
 
 from app.api.schemas.search import SearchEvidence, SearchResultSchema
-from app.services.vector_store import QDRANT_COLLECTION, get_qdrant_client
 
 
 def perform_hybrid_search(
@@ -92,39 +91,44 @@ def perform_hybrid_search(
     if not valid_contract_ids:
         return []
 
-    # --- 4. Semantic Search (Qdrant) ---
+    # --- 4. Semantic Search (Supabase pgvector) ---
     q_str = filters.get("semantic_query", "").strip()
     if q_str:
         try:
-            q_client = get_qdrant_client()
-            search_result = q_client.query_points(
-                collection_name=QDRANT_COLLECTION,
-                query=q_str,
-                query_filter={
-                    "must": [
-                        {"key": "organization_id", "match": {"value": organization_id}},
-                    ]
-                },
-                limit=15 # Get top 15 chunks across org
-            )
+            from app.services.embedding_service import embedding_model
             
-            for point in search_result.points:
-                cid = point.payload.get("contract_id")
+            # 1. Embed the search query
+            embeddings_generator = embedding_model.embed([q_str])
+            query_embedding = list(embeddings_generator)[0].tolist()
+            
+            # 2. Call the Supabase RPC function for similarity search
+            rpc_res = supabase.rpc(
+                "match_contract_chunks",
+                {
+                    "query_embedding": query_embedding,
+                    "match_threshold": 0.3, # Adjust based on testing
+                    "match_count": 15,
+                    "org_id": organization_id
+                }
+            ).execute()
+            
+            for row in (rpc_res.data or []):
+                cid = row.get("contract_id")
                 if cid in valid_contract_ids:
                     # Semantic hit
-                    contract_map[cid]["relevance_score"] += point.score
+                    contract_map[cid]["relevance_score"] += row.get("similarity", 0.0)
                     
                     reason = "Semantic match in contract text"
                     if reason not in contract_map[cid]["match_reasons"]:
                         contract_map[cid]["match_reasons"].append(reason)
                         
                     contract_map[cid]["evidence"].append(SearchEvidence(
-                        section_title=point.payload.get("section_title"),
-                        page_number=point.payload.get("page_number"),
-                        excerpt=point.payload.get("text", "")[:300] + "..."
+                        section_title=row.get("section_title"),
+                        page_number=row.get("page_number"),
+                        excerpt=row.get("text", "")[:300] + "..."
                     ))
         except Exception as e:
-            print(f"Qdrant global search failed: {e}")
+            print(f"Supabase pgvector global search failed: {e}")
             # Do not fail entirely, just degrade gracefully
             
     # --- 5. Result Fusion & Formatting ---

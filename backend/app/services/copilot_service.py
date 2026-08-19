@@ -4,10 +4,6 @@ from typing import Any
 
 import google.generativeai as genai
 from pydantic import BaseModel, Field
-
-from app.services.vector_store import search_contract_chunks
-
-
 # Schema for the final Copilot response
 class CitationSchema(BaseModel):
     chunk_id: str | None = Field(None, description="The UUID of the Qdrant chunk.")
@@ -82,10 +78,36 @@ def get_hybrid_context(supabase, organization_id: str, contract_id: str, query: 
         
     # 2. Fetch Semantic Chunks
     try:
-        chunks = search_contract_chunks(organization_id, contract_id, query, limit=5)
+        from app.services.embedding_service import embedding_model
+        
+        embeddings_generator = embedding_model.embed([query])
+        query_embedding = list(embeddings_generator)[0].tolist()
+        
+        rpc_res = supabase.rpc(
+            "match_contract_chunks",
+            {
+                "query_embedding": query_embedding,
+                "match_threshold": 0.2,
+                "match_count": 30, # Fetch more since we search whole org
+                "org_id": organization_id
+            }
+        ).execute()
+        
+        chunks = []
+        for row in (rpc_res.data or []):
+            if row.get("contract_id") == contract_id:
+                chunks.append({
+                    "chunk_id": row.get("id"),
+                    "section_title": row.get("section_title"),
+                    "page_number": row.get("page_number"),
+                    "text": row.get("text")
+                })
+                if len(chunks) >= 5:
+                    break
+                    
         context["chunks"] = chunks
     except Exception as e:
-        print(f"Qdrant retrieval failed: {e}")
+        print(f"pgvector retrieval failed: {e}")
         # Gracefully degrade to just structured data
         pass
         

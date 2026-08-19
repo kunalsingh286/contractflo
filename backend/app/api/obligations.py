@@ -116,6 +116,16 @@ def analyze_contract_obligations(
     
     return {"message": "Obligation analysis started", "status": "pending"}
 
+@router.get("/all/obligations")
+def get_all_obligations(
+    user = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client)
+):
+    """Get all obligations for the organization's contracts for the Obligation Center dashboard"""
+    # RLS limits to the user's org
+    obs_res = supabase.table("obligations").select("*, contracts(title)").order("due_date", nulls_last=True).execute()
+    return obs_res.data
+
 @router.get("/{contract_id}/obligations/status")
 def get_obligation_status(
     contract_id: str,
@@ -136,6 +146,16 @@ def get_obligation_status(
         "error": doc_res.data[0].get("obligation_extraction_error")
     }
 
+@router.get("/all/obligations")
+def get_all_obligations(
+    user = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_client)
+):
+    """Get all obligations for the organization's contracts for the Obligation Center dashboard"""
+    # RLS limits to the user's org
+    obs_res = supabase.table("obligations").select("*, contracts(title)").order("due_date", nulls_last=True).execute()
+    return obs_res.data
+
 @router.get("/{contract_id}/obligations")
 def get_contract_obligations(
     contract_id: str,
@@ -145,16 +165,6 @@ def get_contract_obligations(
     obs_res = supabase.table("obligations").select("*").eq("contract_id", contract_id).order("created_at").execute()
     
     # We return the list even if empty, as the status endpoint dictates if it's done
-    return obs_res.data
-
-@router.get("/all/obligations")
-def get_all_obligations(
-    user = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
-):
-    """Get all obligations for the organization's contracts for the Obligation Center dashboard"""
-    # RLS limits to the user's org
-    obs_res = supabase.table("obligations").select("*, contracts(title)").order("due_date", nulls_last=True).execute()
     return obs_res.data
 
 class ObligationUpdate(BaseModel):

@@ -9,7 +9,7 @@ security = HTTPBearer()
 
 def get_supabase_client() -> Client:
     supabase_url = os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
-    supabase_key = os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+    supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not supabase_key:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
